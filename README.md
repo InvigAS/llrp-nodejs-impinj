@@ -5,7 +5,7 @@ Nodejs module to read RFID tags by connecting to a RFID reader through LLRP prot
 
 ## Status
 
-Do not use for any serious development. This module is only able to read tag ids and doesn't implement the entire LLRP protocol.
+This fork changes how the module works and adds some extra functionality.
 
 ### Authors
 
@@ -15,7 +15,7 @@ Jeriel Mari E. Lopez
 
 ### Installation
 
-npm install llrp
+<del> npm install llrp </del>
 
 ### Config
 
@@ -24,12 +24,6 @@ You can provide a config object with the following values:
 ipaddress - IP of the RFID reader (default 192.168.0.30) 
 
 port - port of the RFID reader (default 5084)
-
-log - log messages in the console (default false)
-
-isReaderConfigSet - is the reader config set (default false)
-
-isStartROSpecSent - has START_ROSPEC message been sent to the reader (default false)
 
 ### Example
 
@@ -58,5 +52,11 @@ reader.on('error', function (error) {
 reader.on('didSeeTag', function (tag) {
 	console.log('TAG: ' + tag.tagID);
 });
+
+async function main() {
+	reader.connect();
+	await reader.sendMessage("DELETE_ROSPEC", { ROSpecID: 0 });
+	await reader.sendMessage("SET_READER_CONFIG", { ResetToFactoryDefaults: 1 });
+}
 
 ```
