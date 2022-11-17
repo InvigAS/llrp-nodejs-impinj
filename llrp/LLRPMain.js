@@ -31,8 +31,6 @@ var llrpMain = function (config) {
 	var ipaddress = config.ipaddress || '192.168.0.30';
 	var port = config.port || 5084;
 	var log = config.log || false;
-	var isReaderConfigSet = config.isReaderConfigSet || false;
-	var isStartROSpecSent = config.isStartROSpecSent || false;
 
 	var socket = new net.Socket();
 	var self = this;
@@ -45,13 +43,24 @@ var llrpMain = function (config) {
 	var bEnableRoSpec = new Buffer('04180000000e0000000000000001', 'hex');
 	var bStartRoSpec = new Buffer('04160000000e0000000000000001', 'hex');
 	var bKeepaliveAck = new Buffer('04480000000a00000000', 'hex');
+	var bStopRoSpec = new Buffer(makeMessage(23, 0, [{ value: 1, bits: 32 }]), 'hex')
+	var bCloseConnection = new Buffer(makeMessage(14, 0), 'hex');
+	var bImpinjEnableExtensions = new Buffer(makeMessage(1023, 0, [
+		{ value: 25882, bits: 32 },
+		{ value: 21, bits: 8 },
+		{ value: 0, bits: 32 }
+	]), 'hex');
 
 	// ====================
 	// Public Methods
 	// ====================
 
-	this.connect = function () {
+	this.disconnect = function () {
+		writeMessage(client, bStopRoSpec);
+		writeMessage(client, bCloseConnection);
+	}
 
+	this.connect = function () {
 		// timeout after 60 seconds.
 		socket.setTimeout(60000, function () {
 			if (log) {
@@ -92,35 +101,22 @@ var llrpMain = function (config) {
 
 					//Check message type and send appropriate response.
 					//This send-receive is the most basic form to read a tag in llrp.
-					switch (message.getType()) {
-					case messageC.READER_EVENT_NOTIFICATION:
-						handleReaderNotification(message);
-						break;
-					case messageC.SET_READER_CONFIG_RESPONSE:
-						//send ADD_ROSPEC
-						writeMessage(client, bAddRoSpec);
-						break;
-					case messageC.ADD_ROSPEC_RESPONSE:
-						//send ENABLE_ROSPEC
-						writeMessage(client, bEnableRoSpec);
-						break;
-					case messageC.ENABLE_ROSPEC_RESPONSE:
-						//send START_ROSPEC
-						sendStartROSpec();
-						break;
-					case messageC.START_ROSPEC_RESPONSE:
-						writeMessage(client, bEnableEventsAndReport);
-						break;
-					case messageC.RO_ACCESS_REPORT:
-						handleROAccessReport(message);
-						break;
-					case messageC.KEEPALIVE:
-						//send KEEPALIVE_ACK
-						writeMessage(client, bKeepaliveAck);
-						break;
-					default:
-						//Default, doing nothing.
+					const messageType = message.getType();
+					switch (messageType) {
+						case messageC.RO_ACCESS_REPORT:
+							handleROAccessReport(message);
+							break;
+						case messageC.KEEPALIVE:
+							//send KEEPALIVE_ACK
+							writeMessage(client, bKeepaliveAck);
+							break;
+						case messageC.ERROR_MESSAGE:
+							break;
+						default:
+							break;
 					}
+					handleMessage(message);
+					self.emit(messageType, message);
 				}
 			});
 		});
@@ -148,9 +144,130 @@ var llrpMain = function (config) {
 		});
 	};
 
+	/**
+	 * Use this message to send LLRP messages
+	 * 
+	 * SET_READER_CONFIG only supports ResetToFactoryDefaults
+	 * 
+	 * @param {string} message LLRP Messages Ex. START_ROSPEC, ENABLE_ROSPEC
+	 * @param {Object | Object[]} data Optional extra data for the messages. Can be an array or one object
+	 * @return {Promise} returns the response message
+	 * 
+	 */
+	this.sendMessage = function (message, data = null) {
+		const promise = new Promise((resolve, reject) => {
+			let response = 0;
+			let messageBuffer = undefined;
+			switch (messageC[message]) {
+				case messageC.ADD_ROSPEC:
+					break;
+				case messageC.DELETE_ROSPEC:
+					if (data.ROSpecID !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(21, 0, [{ value: data.ROSpecID, bits: 32 }] ), 'hex');
+						response = messageC.DELETE_ROSPEC_RESPONSE;
+					}
+					break;
+				case messageC.START_ROSPEC:
+					if (data.ROSpecID !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(22, 0, [{ value: data.ROSpecID, bits: 32 }] ), 'hex');
+						response = messageC.START_ROSPEC_RESPONSE;
+					}
+					break;
+				case messageC.STOP_ROSPEC:
+					if (data.ROSpecID !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(23, 0, [{ value: data.ROSpecID, bits: 32 }] ), 'hex');
+						response = messageC.STOP_ROSPEC_RESPONSE;
+					}
+					break;
+				case messageC.ENABLE_ROSPEC:
+					if (data.ROSpecID !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(24, 0, [{ value: data.ROSpecID, bits: 32 }] ), 'hex');
+						response = messageC.ENABLE_ROSPEC_RESPONSE;
+					}
+					break;
+				case messageC.DISABLE_ROSPEC:
+					if (data.ROSpecID !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(25, 0, [{ value: data.ROSpecID, bits: 32 }] ), 'hex');
+						response = messageC.DISABLE_ROSPEC_RESPONSE;
+					}
+					break;
+				case messageC.SET_READER_CONFIG:
+					if (data.ResetToFactoryDefaults !== undefined) {
+						messageBuffer = Buffer.from(makeMessage(3, 0, [{ value: parseInt(data.ResetToFactoryDefaults), bits: 1 }, { value: 0, bits: 7 }] ), 'hex');
+						response = messageC.SET_READER_CONFIG_RESPONSE;
+					}
+					break;
+				case message.CUSTOM_MESSAGE:
+					if (data !== null) {
+						messageBuffer = Buffer.from(makeMessage(1023, 0, data), 'hex');
+						response = messageC.CUSTOM_MESSAGE_RESPONSE;
+					}
+					break;
+				default:
+					break;
+			}
+
+			if (response === 0) {
+				return;
+			}
+
+			writeMessage(client, messageBuffer);
+
+			self.on(response, (message) => {
+				resolve(message)
+			});
+		});
+
+		return promise;
+	}
+
 	// ====================
 	// Helper Methods
 	// ====================
+
+	/**
+	 * Helper function to make binary encodings
+	 * 
+	 * @example <caption>Example of usage</caption>
+	 * const hex = makeMessage(21, 0, [{ value: 1, bits: 32 }])
+	 * 
+	 * @param {int} messageType Messagetype
+	 * @param {int} messageId Messageid. Can be anything ex. 0
+	 * @param {Object[]} [messageData] Optional Array of object in the form of ex. {value: 1, bits: 32}
+	 * @param {int} messageData[].value Data value
+	 * @param {int} messageData[].bits Data size for the value
+ 	 * @returns {string} Returns a hex string of the binary encoding
+	 */
+	function makeMessage(messageType, messageId, messageData = null) {
+		const rsvd = "000";
+		const ver = "001";
+
+		const type = messageType.toString(2).padStart(10, "0");
+		const id = messageId.toString(2).padStart(32, "0");
+
+		let data = '';
+
+		if (messageData !== null) {
+			for (let i = 0; i < messageData.length; i++) {
+				const tmpData = messageData[i].value.toString(2).padStart(messageData[i].bits, '0');
+				data = data + tmpData;
+			}
+		}
+
+		let length = (rsvd.length + ver.length + type.length + id.length + data.length + 32) / 8;
+		length = length.toString(2).padStart(32, "0");
+
+		const message = BigInt('0b' + rsvd + ver + type + length + id + data).toString(16);
+
+		return '0' + message;
+	}
+
+	function handleMessage(message) {
+		var parametersKeyValue = decode.parameter(message.getParameter());
+		if (log) {
+			console.log(parametersKeyValue);
+		}
+	}
 
 	function handleReaderNotification(message) {
 		var parametersKeyValue = decode.parameter(message.getParameter());
@@ -158,37 +275,13 @@ var llrpMain = function (config) {
 		parametersKeyValue.forEach(function (decodedParameters) {
 			if (decodedParameters.type === parameterC.ReaderEventNotificationData) {
 				var subParameters = mapSubParameters(decodedParameters);
-				if (subParameters[parameterC.ROSpecEvent] !== undefined) {
-					//Event type is End of ROSpec
-					if (subParameters[parameterC.ROSpecEvent].readUInt8(0) === 1) {
-						//We only have 1 ROSpec so obviously it would be that.
-						//So we would not care about the ROSpecID and
-						//just reset flag for START_ROSPEC.
-						resetIsStartROSpecSent();
-					}
-				}
+				console.log(subParameters);
 			}
 		});
-
-		//global configuration and enabling reports has not been set.
-		if (!isReaderConfigSet) { //set them.
-			writeMessage(client, bSetReaderConfig); //send SET_READER_CONFIG, global reader configuration in reading tags.
-			isReaderConfigSet = true; //we have set the reader configuration.
-		} else {
-			sendStartROSpec();
-		}
 	}
 
 	function handleROAccessReport(message) {
 		process.nextTick(function () {
-			//reset flag for START_ROSPEC.
-			resetIsStartROSpecSent();
-			//show current date.
-
-			if (log) {
-				console.log('RO_ACCESS_REPORT at ' + (new Date()).toString());
-			}
-
 			//read Parameters
 			//this contains the TagReportData
 			var parametersKeyValue = decode.parameter(message.getParameter());
@@ -213,7 +306,7 @@ var llrpMain = function (config) {
 						}
 
 						if (log) {
-							console.log('ID: ' + tag.tagID + '\tRead count: ' + tag.tagSeenCount);
+							//console.log('ID: ' + tag.tagID + '\tRead count: ' + tag.tagSeenCount);
 						}
 
 						if (tag.tagID) {
@@ -277,13 +370,6 @@ var llrpMain = function (config) {
 			isStartROSpecSent = true; //change state of flag.
 			writeMessage(client, bStartRoSpec); //send START_ROSPEC
 		}
-	}
-
-	/**
-	 * Resets the isStartROSpecSent flag to false.
-	 */
-	function resetIsStartROSpecSent() {
-		isStartROSpecSent = false;
 	}
 
 	/**
