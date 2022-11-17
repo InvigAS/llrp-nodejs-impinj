@@ -35,8 +35,6 @@ var reader = new llrp({
 	ipaddress: '192.168.0.143'
 });
 
-reader.connect();
-
 reader.on('timeout', function () {
 	console.log('timeout');
 });
