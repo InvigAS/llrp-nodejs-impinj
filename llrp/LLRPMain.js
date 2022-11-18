@@ -14,48 +14,39 @@
 // Includes
 // ====================
 
-var messageC = require('./LLRPMessagesConstants.js');
-var parameterC = require('./LLRPParametersConstants.js');
-var LLRPMessage = require('./LLRPMessages.js');
-var decode = require('./decode.js');
+const messageC = require('./LLRPMessagesConstants.js');
+const parameterC = require('./LLRPParametersConstants.js');
+const LLRPMessage = require('./LLRPMessages.js');
+const decode = require('./decode.js');
 
-var net = require('net');
+const net = require('net');
 const { rootCertificates } = require('tls');
 var EventEmitter = require('events').EventEmitter;
 
-var llrpMain = function (config) {
+const llrpMain = function (config) {
 
 	// ====================
 	// Variables
 	// ====================
 
-	var ipaddress = config.ipaddress || '192.168.0.30';
-	var port = config.port || 5084;
-	var log = config.log || false;
+	const ipaddress = config.ipaddress || '192.168.0.30';
+	const port = config.port || 5084;
+	const log = config.log || false;
 
-	var socket = new net.Socket();
-	var self = this;
-	var client = null;
+	const socket = new net.Socket();
+	const self = this;
+	let client = null;
 
-	var bKeepaliveAck = new Buffer('04480000000a00000000', 'hex');
-	var bStopRoSpec = new Buffer(makeMessage(23, 0, [{ value: 1, bits: 32 }]), 'hex')
-	var bCloseConnection = new Buffer(makeMessage(14, 0), 'hex');
+	const bKeepaliveAck = Buffer.from('04480000000a00000000', 'hex');
 
 	// ====================
 	// Public Methods
 	// ====================
 
-	this.disconnect = function () {
-		writeMessage(client, bStopRoSpec);
-		writeMessage(client, bCloseConnection);
-	}
-
 	this.connect = function () {
 		// timeout after 60 seconds.
 		socket.setTimeout(60000, function () {
-			if (log) {
-				console.log('Connection timeout');
-			}
+			if (log) console.log('Connection timeout');
 			process.nextTick(function () {
 				self.emit('timeout', new Error('Connection timeout'));
 			});
@@ -63,9 +54,8 @@ var llrpMain = function (config) {
 
 		// connect with reader
 		client = socket.connect(port, ipaddress, function () {
-			if (log) {
-				console.log('Connected to: ' + ipaddress + ':' + port);
-			}
+			if (log) console.log('Connected to: ' + ipaddress + ':' + port);
+			
 		});
 
 		// whenever reader sends data.
@@ -73,9 +63,8 @@ var llrpMain = function (config) {
 			process.nextTick(function () {
 				//check if there is data.
 				if (data === undefined) {
-					if (log) {
-						console.log('Undefined data returned by the rfid.');
-					}
+					if (log) console.log('Undefined data returned by the rfid.');
+					
 				}
 
 				//decoded message(s), passable to LLRPMessage class.
@@ -85,10 +74,8 @@ var llrpMain = function (config) {
 				for (var index in messagesKeyValue) {
 					//possible we have more than 1 message in a reply.
 					var message = new LLRPMessage(messagesKeyValue[index]);
-					if (log) {
-						console.log('Receiving: ' + message.getTypeName());
-					}
-
+					if (log) console.log('Receiving: ' + message.getTypeName());
+				
 					//Check message type and send appropriate response.
 					//This send-receive is the most basic form to read a tag in llrp.
 					const messageType = message.getType();
@@ -114,9 +101,7 @@ var llrpMain = function (config) {
 		//the reader or client has ended the connection.
 		client.on('end', function () {
 			//the session has ended
-			if (log) {
-				console.log('client disconnected');
-			}
+			if (log) console.log('client disconnected');
 			process.nextTick(function () {
 				self.emit('disconnect', new Error('Client disconnected.'));
 			});
@@ -125,9 +110,8 @@ var llrpMain = function (config) {
 		//cannot connect to the reader other than a timeout.
 		client.on('error', function (err) {
 			//error on the connection
-			if (log) {
-				console.log(err);
-			}
+			if (log) console.log(err);
+			
 			process.nextTick(function () {
 				self.emit('error', err);
 			});
@@ -150,8 +134,11 @@ var llrpMain = function (config) {
 			let messageBuffer = undefined;
 			switch (messageC[message]) {
 				case messageC.ADD_ROSPEC:
-					messageBuffer = Buffer.from(makeMessage(20, 0, makeROSpec({ ROSpecID: 1, Priority: 0, CurrentState: 0 })), 'hex');
-					response = messageC.ADD_ROSPEC_RESPONSE;
+					if (data !== null) {
+						if (log) console.log(data);
+						messageBuffer = Buffer.from(makeMessage(20, 0, makeROSpec(data)), 'hex');
+						response = messageC.ADD_ROSPEC_RESPONSE;
+					}
 					break;
 				case messageC.DELETE_ROSPEC:
 					if (data.ROSpecID !== undefined) {
@@ -189,6 +176,10 @@ var llrpMain = function (config) {
 						response = messageC.SET_READER_CONFIG_RESPONSE;
 					}
 					break;
+				case messageC.CLOSE_CONNECTION:
+					messageBuffer = Buffer.from(makeMessage(14, 0), 'hex');
+					response = messageC.CLOSE_CONNECTION_RESPONSE;
+					break;
 				case messageC.CUSTOM_MESSAGE:
 					if (data !== null) {
 						messageBuffer = Buffer.from(makeMessage(1023, 0, [ 
@@ -200,7 +191,7 @@ var llrpMain = function (config) {
 					}
 					break;
 				default:
-					console.log("Wrong message");
+					if (log) console.log("Wrong message");
 					break;
 			}
 
@@ -265,15 +256,6 @@ var llrpMain = function (config) {
 		const AISpecStopTriggerType = { value: 0, bits: 8 };
 		const AISpecStopTriggerDuration = { value: 0, bits: 32 };
 
-		//Tagobservation
-		const TagObservationType = { value: 185, bits: 10 };
-		const TagObservationTriggerType = { value: 0, bits: 8 };
-		const TagObservationTriggerRsv = { value: 0, bits: 8 };
-		const TagObservationTriggerNumber = { value: 1, bits: 16 };
-		const TagObservationTriggerAttemps = { value: 0 , bits: 16 };
-		const TagObservationTriggerT = { value: 0, bits: 16 };
-		const TagObservationTriggerTimeout = { value: 0, bits: 32 };
-
 		//InventoryParameterSpec
 		const InventoryParameterSpecType = { value: 186, bits: 10 };
 		const InventoryParameterSpecId = { value: 1, bits: 16 };
@@ -287,22 +269,46 @@ var llrpMain = function (config) {
 		const RFTransmitterSettingsType = { value: 224, bits: 10 };
 		const RFTransmitterSettingsHopTableId = { value: 0, bits: 16 };
 		const RFTransmitterSettingsChannelIndex = { value: 1, bits: 16 };
-		const RFTransmitterSettingsTransmit = { value: 10, bits: 16 };
+		const RFTransmitterSettingsTransmit = { value: ROSpec.Power, bits: 16 };
+
+		//C1G2InventoryCommand
+		const C1G2InventoryCommandType = { value: 330, bits: 10 };
+		const C1G2InventoryCommandS = { value: 1, bits: 1 };
+		const C1G2InventoryCommandRsv = { value: 0, bits: 7 };
+		
+		//C1G2SingulationControl
+		const C1G2SingulationControlType = { value: 336, bits: 10 };
+		const C1G2SingulationControlSession = { value: ROSpec.Session, bits: 2 };
+		const C1G2SingulationControlRsv = { value: 0, bits: 6 };
+		const C1G2SingulationControlTagPopulation = { value: ROSpec.TagPopulation, bits: 16 };
+		const C1G2SingulationControlTagTransitTime = { value: ROSpec.TransitTime, bits: 32 };
+
+		//ImpinjInventorySearchMode
+		const ImpinjInventorySearchModeType = { value: 1023, bits: 10 };
+		const ImpinjInventorySearchModeVendor = { value: 25882, bits: 32 };
+		const ImpinjInventorySearchModeSubtype = { value: 23, bits: 32 };
+		const ImpinjInventorySearchModeInventorySearchMode = { value: ROSpec.SearchMode, bits: 16 };
 
 		//Data Arrays
+		const ImpinjInventorySearchMode = [rsv, ImpinjInventorySearchModeType, { value: 0, bits: 16 }, ImpinjInventorySearchModeVendor, ImpinjInventorySearchModeSubtype, ImpinjInventorySearchModeInventorySearchMode];
+		ImpinjInventorySearchMode[2].value = countBytes(ImpinjInventorySearchMode);
+
+		const C1G2SingulationControl = [rsv, C1G2SingulationControlType, { value: 0, bits: 16 }, C1G2SingulationControlSession, C1G2SingulationControlRsv, C1G2SingulationControlTagPopulation, C1G2SingulationControlTagTransitTime];
+		C1G2SingulationControl[2].value = countBytes(C1G2SingulationControl);
+
+		const C1G2InventoryCommand = [rsv, C1G2InventoryCommandType, { value: 0, bits: 16 }, C1G2InventoryCommandS, C1G2InventoryCommandRsv, ...C1G2SingulationControl, ...ImpinjInventorySearchMode];
+		C1G2InventoryCommand[2].value = countBytes(C1G2InventoryCommand);
+
 		const RFTransmitterSettings = [rsv, RFTransmitterSettingsType, { value: 0, bits: 16 }, RFTransmitterSettingsHopTableId, RFTransmitterSettingsChannelIndex, RFTransmitterSettingsTransmit]
 		RFTransmitterSettings[2].value = countBytes(RFTransmitterSettings);
 
-		const AntennaConfiguration = [rsv, AntennaConfigurationType, { value: 0, bits: 16 }, AntennaConfigurationId, ...RFTransmitterSettings];
+		const AntennaConfiguration = [rsv, AntennaConfigurationType, { value: 0, bits: 16 }, AntennaConfigurationId, ...RFTransmitterSettings, ...C1G2InventoryCommand];
 		AntennaConfiguration[2].value = countBytes(AntennaConfiguration);
 
 		const InventoryParameterSpec = [rsv, InventoryParameterSpecType, { value: 0, bits: 16 }, InventoryParameterSpecId, InventoryParameterSpecProtocolId, ...AntennaConfiguration];
 		InventoryParameterSpec[2].value = countBytes(InventoryParameterSpec);
-		
-		const Tagobservation = [rsv, TagObservationType, { value: 0, bits: 16 }, TagObservationTriggerType, TagObservationTriggerRsv, TagObservationTriggerNumber, TagObservationTriggerAttemps, TagObservationTriggerT, TagObservationTriggerTimeout];
-		Tagobservation[2].value = countBytes(Tagobservation);
 
-		const AISpecStop = [rsv, AISpecStopType, { value: 0, bits: 16}, AISpecStopTriggerType, AISpecStopTriggerDuration]//, ...Tagobservation];
+		const AISpecStop = [rsv, AISpecStopType, { value: 0, bits: 16}, AISpecStopTriggerType, AISpecStopTriggerDuration];
 		AISpecStop[2].value = countBytes(AISpecStop);
 
 		const AISpec = [rsv, AISpecType, { value: 0, bits: 16 }, AntennaCount, AntennaId, ...AISpecStop, ...InventoryParameterSpec];
@@ -371,14 +377,12 @@ var llrpMain = function (config) {
 
 		const message = BigInt('0b' + rsvd + ver + type + length + id + data).toString(16);
 
-		console.log('0' + message);
-
 		return '0' + message;
 	}
 
 	function handleMessage(message) {
 		const parametersKeyValue = decode.parameter(message.getParameter());
-		if (parametersKeyValue.length !== undefined) {
+		if (parametersKeyValue?.length !== undefined) {
 			for (let i = 0; i < parametersKeyValue.length; i++) {
 				if (parametersKeyValue[i].typeName === 'LLRPStatus') {
 					parametersKeyValue[i].status = parametersKeyValue[i].value[1];
@@ -386,7 +390,7 @@ var llrpMain = function (config) {
 				}
 			}
 		}
-		console.log(parametersKeyValue);
+		if (log) console.log(parametersKeyValue);
 	}
 
 	function handleReaderNotification(message) {
@@ -395,7 +399,7 @@ var llrpMain = function (config) {
 		parametersKeyValue.forEach(function (decodedParameters) {
 			if (decodedParameters.type === parameterC.ReaderEventNotificationData) {
 				var subParameters = mapSubParameters(decodedParameters);
-				console.log(subParameters);
+				if (log) console.log(subParameters);
 			}
 		});
 	}
@@ -414,7 +418,9 @@ var llrpMain = function (config) {
 
 						var tag = {
 							tagID: null,
-							tagSeenCount: 0
+							tagSeenCount: 0,
+							AntennaID: 0,
+							PeakRSSI: 0
 						};
 
 						if (typeof subParameters[parameterC.EPC96] !== 'undefined') {
@@ -425,13 +431,21 @@ var llrpMain = function (config) {
 							tag.tagSeenCount = subParameters[parameterC.TagSeenCount].readUInt16BE(0);
 						}
 
+						if (typeof subParameters[parameterC.AntennaID] !== 'undefined') {
+							tag.AntennaID = subParameters[parameterC.AntennaID].readUInt16BE(0);
+						}
+
+						if (typeof subParameters[parameterC.PeakRSSI] !== 'undefined') {
+							tag.PeakRSSI = subParameters[parameterC.PeakRSSI].readInt8();
+						}
+
 						if (log) {
 							//console.log('ID: ' + tag.tagID + '\tRead count: ' + tag.tagSeenCount);
 						}
 
 						if (tag.tagID) {
-							process.nextTick(function () {
-								self.emit('didSeeTag', tag);
+							process.nextTick(() => {
+								self.emit('tagRead', tag);
 							});
 						}
 					}
