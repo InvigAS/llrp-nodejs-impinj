@@ -428,8 +428,11 @@ const llrpMain = function (config) {
 							tagID: null,
 							tagSeenCount: 0,
 							AntennaID: 0,
-							PeakRSSI: 0
+							PeakRSSI: 0,
+							firstSeenTime: 0
 						};
+
+						
 
 						if (typeof subParameters[parameterC.EPC96] !== 'undefined') {
 							tag.tagID = subParameters[parameterC.EPC96].toString('hex');
@@ -445,6 +448,10 @@ const llrpMain = function (config) {
 
 						if (typeof subParameters[parameterC.PeakRSSI] !== 'undefined') {
 							tag.PeakRSSI = subParameters[parameterC.PeakRSSI].readInt8();
+						}
+
+						if (typeof subParameters[parameterC.FirstSeenTimestampUTC] !== 'undefined') {
+							tag.firstSeenTime = subParameters[parameterC.FirstSeenTimestampUTC].readBigUInt64BE(0).toString();
 						}
 
 						if (log) {
