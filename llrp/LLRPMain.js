@@ -209,7 +209,7 @@ const llrpMain = function (config) {
 
 			writeMessage(client, messageBuffer);
 
-			self.on(response, (message) => {
+			self.once(response, (message) => {
 				resolve(message)
 			});
 
