@@ -451,7 +451,7 @@ const llrpMain = function (config) {
 						}
 
 						if (typeof subParameters[parameterC.FirstSeenTimestampUTC] !== 'undefined') {
-							tag.firstSeenTime = subParameters[parameterC.FirstSeenTimestampUTC].readBigUInt64BE(0).toString();
+							tag.firstSeenTime = Number(subParameters[parameterC.FirstSeenTimestampUTC].readBigUInt64BE(0));
 						}
 
 						if (log) {
