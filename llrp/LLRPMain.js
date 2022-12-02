@@ -45,6 +45,27 @@ const llrpMain = function (config) {
 	// Public Methods
 	// ====================
 
+	this.testConnection = function () {
+		const promise = new Promise((resolve, reject) => {
+			const testClient = net.connect({ host: ipaddress, port: port, timeout: 1 },
+				function() { //'connect' listener
+				console.log('client connected');
+				testClient.end();
+				})
+				.once('error', function(err) {
+					resolve(false);
+				})
+				.once('connect', function() {
+					resolve(true);
+				});
+			testClient.setTimeout(3000, function() {
+				testClient.destroy();
+				resolve(false);
+			});
+		});
+		return promise;
+	}
+
 	this.connect = function () {
 		/*
 		// timeout after 60 seconds.
