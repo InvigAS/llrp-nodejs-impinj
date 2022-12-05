@@ -311,6 +311,11 @@ class llrpMain  extends EventEmitter{
 			const C1G2InventoryCommandS = { value: 1, bits: 1 };
 			const C1G2InventoryCommandRsv = { value: 0, bits: 7 };
 
+			//C1G2RFControl
+			const C1G2RFControlType = { value: 335, bits: 10 };
+			const C1G2RFControlModeIndex = { value: ROSpec.ModeIndex, bits: 16 };
+			const C1G2RFControlTari = { value: 0, bits: 16 };
+
 			//C1G2SingulationControl
 			const C1G2SingulationControlType = { value: 336, bits: 10 };
 			const C1G2SingulationControlSession = { value: ROSpec.Session, bits: 2 };
@@ -331,7 +336,10 @@ class llrpMain  extends EventEmitter{
 			const C1G2SingulationControl = [rsv, C1G2SingulationControlType, { value: 0, bits: 16 }, C1G2SingulationControlSession, C1G2SingulationControlRsv, C1G2SingulationControlTagPopulation, C1G2SingulationControlTagTransitTime];
 			C1G2SingulationControl[2].value = countBytes(C1G2SingulationControl);
 
-			const C1G2InventoryCommand = [rsv, C1G2InventoryCommandType, { value: 0, bits: 16 }, C1G2InventoryCommandS, C1G2InventoryCommandRsv, ...C1G2SingulationControl, ...ImpinjInventorySearchMode];
+			const C1G2RFControl = [rsv, C1G2RFControlType, { value: 0, bits: 16 }, C1G2RFControlModeIndex, C1G2RFControlTari];
+			C1G2RFControl[2].value = countBytes(C1G2RFControl);
+
+			const C1G2InventoryCommand = [rsv, C1G2InventoryCommandType, { value: 0, bits: 16 }, C1G2InventoryCommandS, C1G2InventoryCommandRsv, ...C1G2RFControl, ...C1G2SingulationControl, ...ImpinjInventorySearchMode];
 			C1G2InventoryCommand[2].value = countBytes(C1G2InventoryCommand);
 
 			const RFTransmitterSettings = [rsv, RFTransmitterSettingsType, { value: 0, bits: 16 }, RFTransmitterSettingsHopTableId, RFTransmitterSettingsChannelIndex, RFTransmitterSettingsTransmit];
