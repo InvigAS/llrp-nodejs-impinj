@@ -39,13 +39,13 @@ exports.message = function (buffer, returnObject) {
 		type: ((buffer[0] & 3) << 8) | buffer[1], //type is the first 2 bits of the first octet and the second octet.
 		length: length, //total length of message in octets.
 		id: buffer.readUInt32BE(6), //id would be read from the 7th octet, 4 octets.
-		parameter: buffer.slice(10, length), //the parameter value would be starting from 11 up to the end of the curernt message.
+		parameter: buffer.subarray(10, length), //the parameter value would be starting from 11 up to the end of the curernt message.
 	});
 
 	//check if there are still parameters following this parameter.
 	//if none, undefined will be returned and will not reach the step
 	//of getting added to the returnObject.
-	exports.message(buffer.slice(length), returnObject);
+	exports.message(buffer.subarray(length), returnObject);
 
 	return returnObject;
 };
@@ -81,20 +81,25 @@ exports.parameter = function (buffer, returnObject) {
 	if (buffer[0] & 128) {
 		type = buffer[0] & 127; //type is the first 7 bits of the first octet.
 		length = parameterC.tvLengths[type]; //each TV has a defined length, we reference in our parameter constant.
+
+		if (typeof length === 'undefined') {
+			return undefined;
+		}
+
 		//since it is not present in a TV encoded buffer.
-		value = buffer.slice(1, length); //the value in a TV starts from the second octet up the entire length of the buffer.
+		value = buffer.subarray(1, length); //the value in a TV starts from the second octet up the entire length of the buffer.
 		reserved = 1; //reserved is set as 1 on the first octet's most significant bit.
 	} else {
 		type = ((buffer[0] & 3) << 8) | buffer[1]; //type is the first 2 bits of the first octet and the second octet.
 		length = buffer.readUInt16BE(2); //each TLV has length in the third and fourth octet.
-		value = buffer.slice(4, length); //the value in a TLV starts from the fifth octet up the entire length of the buffer.
+		value = buffer.subarray(4, length); //the value in a TLV starts from the fifth octet up the entire length of the buffer.
 	}
 
 	//see if our parameter constant lists this buffer as having subParameters
 	if (parameterC.hasSubParameters[type]) {
 		//check for subParameter via recursion.
 		//undefined will be returned if none is found.
-		subParameters = exports.parameter(value.slice(parameterC.staticLengths[type] - (length - value.length)));
+		subParameters = exports.parameter(value.subarray(parameterC.staticLengths[type] - (length - value.length)));
 	}
 
 	//add to our returnObject our LLRPParameter key value pair.
@@ -110,7 +115,7 @@ exports.parameter = function (buffer, returnObject) {
 	//check if there are still parameters following this parameter.
 	//if none, undefined will be returned and will not reach the step
 	//of getting added to the returnObject.
-	exports.parameter(buffer.slice(length), returnObject);
+	exports.parameter(buffer.subarray(length), returnObject);
 
 	return returnObject;
 };
