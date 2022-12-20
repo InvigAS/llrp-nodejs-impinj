@@ -311,6 +311,34 @@ class llrpMain  extends EventEmitter{
 			const C1G2InventoryCommandS = { value: 1, bits: 1 };
 			const C1G2InventoryCommandRsv = { value: 0, bits: 7 };
 
+			//C1G2Filter
+			const C1G2FilterType = { value: 331, bits: 10 };
+			const C1G2FilterT = { value: 0, bits: 2 };
+			const C1G2FilterRsv = { value: 0, bits: 6 };
+			
+			//C1G2TagInventoryMask
+			const C1G2TagInventoryMaskType = { value: 332, bits: 10 };
+			const C1G2TagInventoryMaskMB = { value: 1, bits: 2 };
+			const C1G2TagInventoryMaskRsv = { value: 0, bits: 6 };
+			const C1G2TagInventoryMaskPointer = { value: 32, bits: 16 };
+
+			const maskLength = ROSpec.Filter.length * 4;
+
+			let C1G2TagInventoryMaskMaskBitCount = {};
+			let C1G2TagInventoryMaskTagMask = {};
+
+			if (maskLength === 0) {
+				C1G2TagInventoryMaskMaskBitCount = { value: 0, bits: 16 };
+			} else {
+				if (maskLength % 8 !== 0) {
+					C1G2TagInventoryMaskMaskBitCount = { value: maskLength, bits: 16 };
+					C1G2TagInventoryMaskTagMask = { value: BigInt('0x' + ROSpec.Filter + '0'), bits: maskLength + 4 };
+				} else {
+					C1G2TagInventoryMaskMaskBitCount = { value: maskLength, bits: 16 };
+					C1G2TagInventoryMaskTagMask = { value: BigInt('0x' + ROSpec.Filter), bits: maskLength };
+				}
+			}
+
 			//C1G2RFControl
 			const C1G2RFControlType = { value: 335, bits: 10 };
 			const C1G2RFControlModeIndex = { value: ROSpec.ModeIndex, bits: 16 };
@@ -339,7 +367,18 @@ class llrpMain  extends EventEmitter{
 			const C1G2RFControl = [rsv, C1G2RFControlType, { value: 0, bits: 16 }, C1G2RFControlModeIndex, C1G2RFControlTari];
 			C1G2RFControl[2].value = countBytes(C1G2RFControl);
 
-			const C1G2InventoryCommand = [rsv, C1G2InventoryCommandType, { value: 0, bits: 16 }, C1G2InventoryCommandS, C1G2InventoryCommandRsv, ...C1G2RFControl, ...C1G2SingulationControl, ...ImpinjInventorySearchMode];
+			let C1G2TagInventoryMask = []
+			if (maskLength === 0) {
+				C1G2TagInventoryMask = [rsv, C1G2TagInventoryMaskType, { value: 0, bits: 16 }, C1G2TagInventoryMaskMB, C1G2TagInventoryMaskRsv, C1G2TagInventoryMaskPointer, C1G2TagInventoryMaskMaskBitCount];
+			} else {
+				C1G2TagInventoryMask = [rsv, C1G2TagInventoryMaskType, { value: 0, bits: 16 }, C1G2TagInventoryMaskMB, C1G2TagInventoryMaskRsv, C1G2TagInventoryMaskPointer, C1G2TagInventoryMaskMaskBitCount, C1G2TagInventoryMaskTagMask];
+			}
+			C1G2TagInventoryMask[2].value = countBytes(C1G2TagInventoryMask);
+
+			const C1G2Filter = [rsv, C1G2FilterType, { value: 0, bits: 16 }, C1G2FilterT, C1G2FilterRsv, ...C1G2TagInventoryMask];
+			C1G2Filter[2].value = countBytes(C1G2Filter);
+
+			const C1G2InventoryCommand = [rsv, C1G2InventoryCommandType, { value: 0, bits: 16 }, C1G2InventoryCommandS, C1G2InventoryCommandRsv, ...C1G2Filter, ...C1G2RFControl, ...C1G2SingulationControl, ...ImpinjInventorySearchMode];
 			C1G2InventoryCommand[2].value = countBytes(C1G2InventoryCommand);
 
 			const RFTransmitterSettings = [rsv, RFTransmitterSettingsType, { value: 0, bits: 16 }, RFTransmitterSettingsHopTableId, RFTransmitterSettingsChannelIndex, RFTransmitterSettingsTransmit];
